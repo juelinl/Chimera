@@ -1,6 +1,6 @@
 # Chimera
 
-Chimera is a single-GPU multi-vector retrieval system. It builds a compressed
+Chimera is a multi-vector retrieval system with CPU and single-GPU backends. It builds a compressed
 index from document-token embeddings and retrieves documents with late
 interaction scoring.
 
@@ -9,6 +9,26 @@ The repository provides:
 - a C++/CUDA library;
 - command-line tools for index construction and evaluation;
 - a Python binding exposing `build`, `search`, `save`, and `load`.
+
+## CPU-only build
+
+The CPU backend uses HNSW centroid routing, packed 1-bit scans, partition-based
+parallel merge, vectorized full-document scoring with one query token at a time,
+and dynamic extra-bit refinement. These are the defaults; no kernel tuning flags
+are required.
+
+On a Linux AVX-512 host with CMake 3.24+ and a C++17/OpenMP compiler:
+
+```bash
+./setup/build_cpu.sh
+./setup/run_cpu.sh --help
+```
+
+The launcher selects eight OpenMP workers on NUMA node 0, with CPU and memory
+binding. Override `OMP_NUM_THREADS` and `CHIMERA_CPU_NUMA_NODE` as needed.
+See [CPU instructions](docs/cpu.md) for index requirements, search, and profiling.
+The requirements below apply to the GPU backend. For GPU-only builds on hosts
+without AVX-512, configure with `-DCHIMERA_BUILD_CPU=OFF`.
 
 ## Requirements
 
@@ -47,7 +67,7 @@ Python program.
 
 ## Input data
 
-The CLI consumes three raw binary files and one TSV file. 
+The CLI consumes three raw binary files and one TSV file.
 
 The layouts below use these symbols:
 
@@ -62,7 +82,7 @@ The layouts below use these symbols:
 Currently `D` is set to 128 and `L` is set to 32, compatible with ColBERTv2 model's default. To use different values, edit `config.cuh` and rebuild Chimera with
 `./setup/build_chimera.sh`. `PADDED_DIM(D)` must remain a positive multiple of 64,
 and `Q_DOCLEN(L)` should remain a positive multiple of 16 for the current GPU and
-AVX-512 scoring paths. 
+AVX-512 scoring paths.
 
 ### Document embeddings
 

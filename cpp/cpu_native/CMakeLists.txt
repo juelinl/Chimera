@@ -1,0 +1,67 @@
+find_package(OpenMP REQUIRED)
+find_package(Threads REQUIRED)
+include(CheckCXXSourceCompiles)
+include(CMakePushCheckState)
+cmake_push_check_state(RESET)
+set(CMAKE_REQUIRED_FLAGS "-march=native")
+check_cxx_source_compiles("
+#if !defined(__AVX512F__) || !defined(__AVX512BW__) || !defined(__AVX512DQ__) || !defined(__AVX512VL__)
+#error CPU backend requires AVX-512 F/BW/DQ/VL
+#endif
+int main() { return 0; }
+" CHIMERA_CPU_HAS_AVX512)
+cmake_pop_check_state()
+if(NOT CHIMERA_CPU_HAS_AVX512)
+  message(FATAL_ERROR "The CPU backend requires an AVX-512 F/BW/DQ/VL build host. Use CHIMERA_BUILD_CPU=OFF for a GPU-only build.")
+endif()
+add_library(chimera_cpu_native STATIC
+ src/estimator.cpp src/fht_avx.cpp src/index.cpp src/io.cpp src/ivf_pg.cpp
+ src/numa_topology.cpp src/quantization.cpp src/query.cpp src/cpu_kernel.cpp)
+target_include_directories(chimera_cpu_native PUBLIC include dep ../third_party)
+target_compile_options(chimera_cpu_native PUBLIC -march=native)
+target_compile_definitions(chimera_cpu_native PUBLIC CHIMERA_CPU_STAGE1_DOC_ACCUM_MODE=1 CHIMERA_CPU_STAGE3_DYNAMIC_SCHEDULE=1)
+target_link_libraries(chimera_cpu_native PUBLIC OpenMP::OpenMP_CXX Threads::Threads)
+add_library(chimera_cpu_app_utils STATIC app/utils.cpp)
+target_include_directories(chimera_cpu_app_utils PUBLIC app)
+add_executable(cpu_search app/cpu_search.cpp)
+target_link_libraries(cpu_search PRIVATE chimera_cpu_native chimera_cpu_app_utils)
+set_target_properties(cpu_search PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_executable(build_cpu_hnsw ../../tools/benchmark/build_cpu_hnsw.cpp)
+target_link_libraries(build_cpu_hnsw PRIVATE chimera_cpu_native)
+set_target_properties(build_cpu_hnsw PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_executable(cpu_bench ../../tools/benchmark/cpu_bench_native.cpp)
+target_include_directories(cpu_bench PRIVATE ../../tools/benchmark)
+target_link_libraries(cpu_bench PRIVATE chimera_cpu_native)
+set_target_properties(cpu_bench PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+option(CHIMERA_CPU_TESTS "Build CPU correctness tests" ON)
+if(CHIMERA_CPU_TESTS)
+ add_executable(cpu_partition_merge_test tests/partition_merge_test.cpp)
+ target_link_libraries(cpu_partition_merge_test PRIVATE chimera_cpu_native)
+ add_test(NAME cpu_partition_merge COMMAND cpu_partition_merge_test)
+ add_executable(cpu_stage2_batch_test tests/stage2_batch_test.cpp)
+ target_link_libraries(cpu_stage2_batch_test PRIVATE chimera_cpu_native)
+ add_test(NAME cpu_stage2_batch COMMAND cpu_stage2_batch_test)
+endif()
+
+option(CHIMERA_VTUNE "Enable ITT collection controls in the CPU benchmark" OFF)
+if(CHIMERA_VTUNE)
+ target_compile_definitions(cpu_bench PRIVATE CHIMERA_VTUNE)
+ target_include_directories(cpu_bench PRIVATE /opt/intel/oneapi/vtune/latest/include)
+ target_link_libraries(cpu_bench PRIVATE /opt/intel/oneapi/vtune/latest/lib64/libittnotify.a dl)
+endif()
+
+option(CHIMERA_CPU_MICROBENCH "Build experimental document-scoring microbenchmark" OFF)
+if(CHIMERA_CPU_MICROBENCH)
+add_executable(cpu_stage2_micro tests/stage2_micro.cpp)
+target_link_libraries(cpu_stage2_micro PRIVATE chimera_cpu_native)
+set_target_properties(cpu_stage2_micro PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+endif()
+
+if(CHIMERA_CPU_MICROBENCH)
+  add_executable(cpu_stage2_tiles tests/stage2_tiles.cpp)
+  target_link_libraries(cpu_stage2_tiles PRIVATE chimera_cpu_native)
+  set_target_properties(cpu_stage2_tiles PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+endif()

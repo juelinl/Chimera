@@ -3,7 +3,19 @@ project(CHIMERA LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CUDA_STANDARD 17)
-set(CMAKE_BUILD_TYPE Release)
+if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
+    set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type" FORCE)
+endif()
+
+option(CHIMERA_BUILD_CPU "Build the established AVX-512 CPU backend" ON)
+option(CHIMERA_BUILD_GPU "Build the CUDA backend" ON)
+if(CHIMERA_BUILD_CPU)
+    enable_testing()
+    add_subdirectory(cpp/cpu_native)
+endif()
+if(NOT CHIMERA_BUILD_GPU)
+    return()
+endif()
 
 add_compile_definitions(LIBCUDACXX_ENABLE_EXPERIMENTAL_MEMORY_RESOURCE)
 

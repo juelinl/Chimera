@@ -1,2 +1,6 @@
 build/
 build-*/
+__pycache__/
+experiments/
+staging/
+external/
